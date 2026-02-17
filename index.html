@@ -235,6 +235,38 @@
             border-color: #6d3d3d;
         }
 
+        .multiracial-component {
+            display: grid;
+            grid-template-columns: 1fr 80px auto;
+            gap: 8px;
+            margin-bottom: 8px;
+            align-items: center;
+        }
+
+        .multiracial-component select {
+            font-size: 12px;
+        }
+
+        .multiracial-component input {
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .btn-remove-component {
+            background: transparent;
+            color: #f55656;
+            border: 1px solid #4d2d2d;
+            padding: 8px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+
+        .btn-remove-component:hover {
+            background: #2a1616;
+        }
+
         .btn-share {
             background: #2fb17a;
             color: white;
@@ -453,7 +485,7 @@
                         </div>
                         <div>
                             <div class="form-label">Race / Ethnicity</div>
-                            <select id="friendRace">
+                            <select id="friendRace" onchange="handleRaceChange()">
                                 <option value="">Select classification</option>
                                 <option value="Asian">Asian</option>
                                 <option value="Black/African American">Black/African American</option>
@@ -466,6 +498,13 @@
                                 <option value="Other">Other</option>
                             </select>
                         </div>
+                        
+                        <div id="multiracialSection" style="display: none;">
+                            <div class="form-label">Racial Composition</div>
+                            <div id="multiracialInputs"></div>
+                            <button class="btn btn-secondary" onclick="addRaceComponent()" style="margin-top: 8px; width: 100%;">+ Add Race Component</button>
+                        </div>
+                        
                         <button class="btn btn-primary" onclick="addFriend()">Add to Network</button>
                     </div>
                 </div>
@@ -513,16 +552,84 @@
     <script>
         let friends = [];
         let chart = null;
+        let multiracialComponents = [];
 
         const colorPalette = [
             '#00d4ff', '#0099ff', '#2fb17a', '#f5a623', '#f55656',
             '#9b59b6', '#1abc9c', '#e74c3c', '#3498db', '#95a5a6'
         ];
 
+        const raceOptions = [
+            'Asian',
+            'Black/African American',
+            'Hispanic/Latino',
+            'White/Caucasian',
+            'Middle Eastern/North African',
+            'Native American/Indigenous',
+            'Pacific Islander',
+            'Other'
+        ];
+
         function updateDate() {
             const now = new Date();
             const options = { month: 'short', day: 'numeric', year: 'numeric' };
             document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', options);
+        }
+
+        function handleRaceChange() {
+            const race = document.getElementById('friendRace').value;
+            const multiracialSection = document.getElementById('multiracialSection');
+            
+            if (race === 'Multiracial') {
+                multiracialSection.style.display = 'block';
+                if (multiracialComponents.length === 0) {
+                    addRaceComponent();
+                    addRaceComponent();
+                }
+            } else {
+                multiracialSection.style.display = 'none';
+                multiracialComponents = [];
+                document.getElementById('multiracialInputs').innerHTML = '';
+            }
+        }
+
+        function addRaceComponent() {
+            const id = Date.now() + Math.random();
+            multiracialComponents.push({ id, race: '', percentage: '' });
+            renderMultiracialInputs();
+        }
+
+        function removeRaceComponent(id) {
+            multiracialComponents = multiracialComponents.filter(c => c.id !== id);
+            renderMultiracialInputs();
+        }
+
+        function updateRaceComponent(id, field, value) {
+            const component = multiracialComponents.find(c => c.id === id);
+            if (component) {
+                component[field] = value;
+            }
+        }
+
+        function renderMultiracialInputs() {
+            const container = document.getElementById('multiracialInputs');
+            container.innerHTML = multiracialComponents.map(comp => `
+                <div class="multiracial-component">
+                    <select onchange="updateRaceComponent(${comp.id}, 'race', this.value)">
+                        <option value="">Select race</option>
+                        ${raceOptions.map(race => `
+                            <option value="${race}" ${comp.race === race ? 'selected' : ''}>${race}</option>
+                        `).join('')}
+                    </select>
+                    <input type="number" 
+                           placeholder="%" 
+                           min="0" 
+                           max="100" 
+                           value="${comp.percentage}"
+                           onchange="updateRaceComponent(${comp.id}, 'percentage', this.value)" />
+                    <button class="btn-remove-component" onclick="removeRaceComponent(${comp.id})">×</button>
+                </div>
+            `).join('');
         }
 
         function addFriend() {
@@ -533,7 +640,40 @@
                 return;
             }
 
-            friends.push({ name, race });
+            if (race === 'Multiracial') {
+                // Validate multiracial components
+                const validComponents = multiracialComponents.filter(c => c.race && c.percentage);
+                
+                if (validComponents.length === 0) {
+                    alert('Please specify at least one racial component with percentage');
+                    return;
+                }
+
+                const totalPercentage = validComponents.reduce((sum, c) => sum + parseFloat(c.percentage), 0);
+                
+                if (Math.abs(totalPercentage - 100) > 0.1) {
+                    alert(`Percentages must add up to 100% (currently ${totalPercentage.toFixed(1)}%)`);
+                    return;
+                }
+
+                // Store multiracial breakdown
+                friends.push({
+                    name,
+                    race: 'Multiracial',
+                    breakdown: validComponents.map(c => ({
+                        race: c.race,
+                        percentage: parseFloat(c.percentage) / 100
+                    }))
+                });
+
+                // Reset multiracial inputs
+                multiracialComponents = [];
+                document.getElementById('multiracialInputs').innerHTML = '';
+                document.getElementById('multiracialSection').style.display = 'none';
+            } else {
+                friends.push({ name, race });
+            }
+
             document.getElementById('friendName').value = '';
             document.getElementById('friendRace').value = '';
             
@@ -560,15 +700,42 @@
                 return;
             }
 
-            listContainer.innerHTML = friends.map((friend, index) => `
-                <div class="friend-item">
-                    <div class="friend-info">
-                        <div class="friend-name">${friend.name}</div>
-                        <div class="friend-race">${friend.race}</div>
+            listContainer.innerHTML = friends.map((friend, index) => {
+                let raceDisplay = friend.race;
+                if (friend.breakdown) {
+                    raceDisplay = friend.breakdown
+                        .map(b => `${(b.percentage * 100).toFixed(0)}% ${b.race}`)
+                        .join(', ');
+                }
+                
+                return `
+                    <div class="friend-item">
+                        <div class="friend-info">
+                            <div class="friend-name">${friend.name}</div>
+                            <div class="friend-race">${raceDisplay}</div>
+                        </div>
+                        <button class="btn btn-danger" onclick="removeFriend(${index})">Remove</button>
                     </div>
-                    <button class="btn btn-danger" onclick="removeFriend(${index})">Remove</button>
-                </div>
-            `).join('');
+                `;
+            }).join('');
+        }
+
+        function calculateRaceDistribution() {
+            const raceCounts = {};
+            
+            friends.forEach(friend => {
+                if (friend.breakdown) {
+                    // Distribute multiracial person proportionally
+                    friend.breakdown.forEach(component => {
+                        raceCounts[component.race] = (raceCounts[component.race] || 0) + component.percentage;
+                    });
+                } else {
+                    // Single race person counts as 1.0
+                    raceCounts[friend.race] = (raceCounts[friend.race] || 0) + 1;
+                }
+            });
+            
+            return raceCounts;
         }
 
         function updateChart() {
@@ -584,10 +751,7 @@
                 return;
             }
 
-            const raceCounts = {};
-            friends.forEach(friend => {
-                raceCounts[friend.race] = (raceCounts[friend.race] || 0) + 1;
-            });
+            const raceCounts = calculateRaceDistribution();
 
             const data = {
                 labels: Object.keys(raceCounts),
@@ -637,7 +801,7 @@
                                     const value = context.parsed || 0;
                                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
                                     const percentage = ((value / total) * 100).toFixed(1);
-                                    return ` ${label}: ${value} (${percentage}%)`;
+                                    return ` ${label}: ${value.toFixed(2)} (${percentage}%)`;
                                 }
                             }
                         }
@@ -649,8 +813,8 @@
 
         function updateStats() {
             document.getElementById('totalFriends').textContent = friends.length;
-            const uniqueRaces = new Set(friends.map(f => f.race));
-            document.getElementById('uniqueGroups').textContent = uniqueRaces.size;
+            const raceCounts = calculateRaceDistribution();
+            document.getElementById('uniqueGroups').textContent = Object.keys(raceCounts).length;
         }
 
         function updateTable() {
@@ -661,12 +825,8 @@
                 return;
             }
 
-            const raceCounts = {};
-            friends.forEach(friend => {
-                raceCounts[friend.race] = (raceCounts[friend.race] || 0) + 1;
-            });
-
-            const total = friends.length;
+            const raceCounts = calculateRaceDistribution();
+            const total = Object.values(raceCounts).reduce((a, b) => a + b, 0);
             const sortedRaces = Object.entries(raceCounts).sort((a, b) => b[1] - a[1]);
 
             tableBody.innerHTML = sortedRaces.map(([race, count]) => {
@@ -676,7 +836,7 @@
                 return `
                     <tr>
                         <td>${race}</td>
-                        <td><span class="count-badge">${count}</span></td>
+                        <td><span class="count-badge">${count.toFixed(2)}</span></td>
                         <td><span class="percentage-badge">${percentage}%</span></td>
                         <td>
                             <div style="background: #2d3544; height: 6px; border-radius: 3px; overflow: hidden;">
@@ -700,17 +860,15 @@
                 const blob = await new Promise(resolve => canvas.toBlob(resolve));
                 const file = new File([blob], 'diversity-analysis.png', { type: 'image/png' });
 
-                const raceCounts = {};
-                friends.forEach(friend => {
-                    raceCounts[friend.race] = (raceCounts[friend.race] || 0) + 1;
-                });
+                const raceCounts = calculateRaceDistribution();
+                const total = Object.values(raceCounts).reduce((a, b) => a + b, 0);
 
                 const statsText = `Friend Network Diversity Analysis\n\n` +
                     Object.entries(raceCounts)
                         .sort((a, b) => b[1] - a[1])
                         .map(([race, count]) => {
-                            const percentage = ((count / friends.length) * 100).toFixed(1);
-                            return `${race}: ${count} (${percentage}%)`;
+                            const percentage = ((count / total) * 100).toFixed(1);
+                            return `${race}: ${count.toFixed(2)} (${percentage}%)`;
                         })
                         .join('\n') +
                     `\n\nTotal Contacts: ${friends.length}`;
@@ -738,7 +896,11 @@
         });
 
         document.getElementById('friendRace').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') addFriend();
+            if (e.key === 'Enter') {
+                if (this.value !== 'Multiracial') {
+                    addFriend();
+                }
+            }
         });
 
         updateDate();
